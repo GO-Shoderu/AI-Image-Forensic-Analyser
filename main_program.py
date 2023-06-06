@@ -15,7 +15,7 @@ class Captioner:
 
     def caption(self, path : str) -> str:
         try:
-            image = Image.open("test3.jpg")
+            image = Image.open(path)
 
             device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -36,6 +36,8 @@ class GUI:
     # The returned list will be an exhaustive list of filenames of a certain filetype, to be iterated through when we're batch processing
     # a certain folder.
     # TODO
+    def search_folder_for_extension(self, folder_path : str, extension : str) -> list[str]:
+        pass
 
 
     def search_folder_for_extension(self, folder_path : str, extension : str) -> list[str]:
@@ -68,34 +70,158 @@ class GUI:
     def search(self, search_term : str) -> list[str]:
         if self.calculated_captions == None:
             print("Dictionary empty!")
-            return []
-
-        found_files = []
-
-        for filename, caption in self.calculated_captions.items():
-            if search_term in caption:
-                found_files.append(filename)
-
-        return found_files
+    
+    def individual_process(self, filename : str) -> str:
+        caption = self.captioner.caption(filename)
+        return caption
+    
+    def update_table(table : sg.Table, rows, dict : dict):
+        temp_table = []
+        temp_list = list(dict.items())
+        for entry in temp_list:
+            temp_subtable = []
+            temp_subtable.append[entry[0]]
+            temp_subtable.append[entry[1]]
+            temp_table.append(temp_subtable)
+        rows = temp_table
+        table.update(temp_table)
+        return temp_table
 
     def __init__(self) -> None:
         self.captioner = Captioner()
 
         self.calculated_captions : dict = None
+        self.path_type = "undefined"
+        self.path = "/images/"
+        self.extension = "jpg"
+
+
+        # TODO build element for selection of extensions
+        self.extensions : list[str] = ["jpg", "jpeg", "png", "bmp"]
+        self.possible_extensions : list[str] = ["jpg", "jpeg", "png", "bmp"]
+
+        menu_layout = [
+            ["File", ["Select image extensions"]]
+        ]
+
+        toprow = ["Path", "Description"]
+        rows = [[]]
+
+        table = sg.Table(
+            values=rows, 
+            headings=toprow, 
+            key="-table-", 
+            enable_events=True, 
+            enable_click_events=True, 
+            expand_x=True, 
+            expand_y=True
+            )
 
         layout = [
-            [sg.Multiline("Placeholder", expand_x=True, expand_y=True, disabled=True, key="placeholder_multiline")],
-            [sg.FolderBrowse(key='folder_browser'), sg.Button("Search", key="open_search")]
+            [sg.Menu(menu_layout)],
+            # TODO add in photo viewer
+            [table],
+            [sg.Button("Search", key="open_search"), sg.Button("Process")]
         ]
         window = sg.Window("image-captioner", layout=layout, size=(1280, 800), resizable=True)
 
         while True:
             event, values = window.read()
+            print("Event: " + event)
 
-            if event == "whatever":
-                folder_path = values["folder_browser"]
-                # process_folder()
-                pass
+            # TODO fix the folder and file settings!
+            if event == "Set folder":
+                self.path_type == "folder"
+                path_button = sg.FolderBrowse("Browse")
+                self.path = values["Browse"]
+                print(self.path)
+                sg.popup("Folder updated to: " + values["Browse"])
+
+            if event == "Set image":
+                self.path_type == "image"
+                path_button = sg.FileBrowse("user_file")
+                self.path = values["user_file"]
+                print(self.path)
+                sg.popup("Image updated to: " + values["user_file"])
+
+            if event == "Select image extensions":
+                extension_selector_layout = [
+                    [sg.Checkbox("jpg/jpeg", key="jpg_box")],
+                    [sg.Checkbox("png", key="png_box")],
+                    [sg.Checkbox("bmp", key="bmp_box")],
+                    [sg.Button("Confirm")]
+                ]
+                popup_extension_selector = sg.Window("Extensions", layout=extension_selector_layout, size=(400, 600))
+                while True:
+                    event2, values2 =  popup_extension_selector.read()
+
+                    if event2 == "Confirm":
+                        selected_extensions = []
+                        if values2["jpg_box"] == True:
+                            selected_extensions.append("jpg")
+                            selected_extensions.append("jpeg")
+                        if values2["png_box"] == True:
+                            selected_extensions.append("bmp")
+                        if values2["bmp_box"] == True:
+                            selected_extensions.append("bmp")
+
+                        self.extensions = selected_extensions
+
+                        popup_extension_selector.close()
+                    
+                    if event2 == sg.WIN_CLOSED:
+                        break
+
+
+
+            if event == "Process":
+                if self.path_type == "undefined":
+                    sg.popup_error("No file or folder selected!")
+                    break
+                
+                if self.path_type == "folder":
+                    # TODO add progress bar
+                    file_list = []
+
+                    for extension in self.extensions:
+                        extension_files = self.search_folder_for_extension(self.path, extension)
+                        for file in extension_files:
+                            file_list.append(file)
+
+                    self.calculated_captions = self.batch_process(file_list)
+
+                if self.path_type == "image":
+                    caption = self.individual_process(self.path)
+                    self.calculated_captions = dict(filename = self.path, caption = caption)
+
+            if event == "open_search":
+                search_headings = [["Filename", "Description"]]
+                search_table = sg.Table([[","]], key="search_table", expand_x=True, expand_y=True, headings=search_headings)
+                search_layout = [
+                    [search_table],
+                    [sg.Text("Search term:"), sg.InputText("", key="search_term"), sg.Button("Search file")]
+                ]
+
+                search_window = sg.Window("Search", search_layout, size=(800, 800))
+                print("Search window opened")
+                
+
+                while True:
+                    event2, values2 = search_window.read()
+                    if event2 == "Search file":
+                        found_files = []
+                        search_term = values2["search_term"]
+                        for key, value in self.calculated_captions.items():
+                            if value.__contains__(search_term):
+                                found_files.append([key, value])
+
+                        search_table.update(found_files)
+
+                    if event2 == sg.WIN_CLOSED:
+                        break
+
+
+
 
             if event == sg.WIN_CLOSED:
                 exit()
