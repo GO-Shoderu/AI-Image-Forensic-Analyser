@@ -15,12 +15,16 @@ class Captioner:
 
     def caption(self, path : str) -> str:
         try:
+            print(path)
             image = Image.open(path)
+            print("Image opened...")
 
             device = "cuda" if torch.cuda.is_available() else "cpu"
 
             inputs = self.processor(images=image, return_tensors="pt").to(device)
             pixel_values = inputs.pixel_values
+
+            print("Pixel values set...")
 
             generated_ids = self.model.generate(pixel_values=pixel_values, max_length=50)
             generated_caption = self.processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
@@ -37,10 +41,6 @@ class GUI:
     # a certain folder.
     # TODO
     def search_folder_for_extension(self, folder_path : str, extension : str) -> list[str]:
-        pass
-
-
-    def search_folder_for_extension(self, folder_path : str, extension : str) -> list[str]:
         file_list = []
 
         for filename in os.listdir(folder_path):
@@ -53,46 +53,45 @@ class GUI:
     # performing a captioning process on each and returning a "dict" (dictionary) object with filename/caption pairs.
     # Important note: make sure to update "self.calcualted_captions" to the final dict object, as well as returning it!
     # TODO
-    def batch_process(self, filenames : list[str]) -> dict:
+    def batch_process(self, filenames : list[str], path) -> dict:
         caption_dict = {}
 
         for filename in filenames:
-            caption = self.captioner.process(filename)
+            caption = self.captioner.caption(path + filename)
             caption_dict[filename]  = caption
 
         self.calculated_captions = caption_dict
 
         return caption_dict
-
-    # This function will search self.calculated_captions for a specific search term, and returna  list of filenames
-    # where that search term has found a match.
-    # TODO
-    def search(self, search_term : str) -> list[str]:
-        if self.calculated_captions == None:
-            print("Dictionary empty!")
     
     def individual_process(self, filename : str) -> str:
         caption = self.captioner.caption(filename)
         return caption
     
-    def update_table(table : sg.Table, rows, dict : dict):
+    def update_table(self, table : sg.Table, dict : dict):
         temp_table = []
         temp_list = list(dict.items())
         for entry in temp_list:
             temp_subtable = []
-            temp_subtable.append[entry[0]]
-            temp_subtable.append[entry[1]]
+            temp_subtable.append(entry[0])
+            temp_subtable.append(entry[1])
             temp_table.append(temp_subtable)
-        rows = temp_table
+        print(temp_table)
         table.update(temp_table)
         return temp_table
 
     def __init__(self) -> None:
+
+
         self.captioner = Captioner()
 
         self.calculated_captions : dict = None
-        self.path_type = "undefined"
-        self.path = "/images/"
+
+        self.captions_table = []
+
+
+        self.path_type = "folder"
+        self.path = "./images/"
         self.extension = "jpg"
 
 
@@ -107,7 +106,7 @@ class GUI:
         toprow = ["Path", "Description"]
         rows = [[]]
 
-        table = sg.Table(
+        main_table = sg.Table(
             values=rows, 
             headings=toprow, 
             key="-table-", 
@@ -120,7 +119,7 @@ class GUI:
         layout = [
             [sg.Menu(menu_layout)],
             # TODO add in photo viewer
-            [table],
+            [main_table],
             [sg.Button("Search", key="open_search"), sg.Button("Process")]
         ]
         window = sg.Window("image-captioner", layout=layout, size=(1280, 800), resizable=True)
@@ -172,13 +171,7 @@ class GUI:
                     if event2 == sg.WIN_CLOSED:
                         break
 
-
-
             if event == "Process":
-                if self.path_type == "undefined":
-                    sg.popup_error("No file or folder selected!")
-                    break
-                
                 if self.path_type == "folder":
                     # TODO add progress bar
                     file_list = []
@@ -188,15 +181,18 @@ class GUI:
                         for file in extension_files:
                             file_list.append(file)
 
-                    self.calculated_captions = self.batch_process(file_list)
+                    self.calculated_captions = self.batch_process(file_list, self.path)
+                    print(self.calculated_captions)
+                    self.update_table(main_table, self.calculated_captions)
+
 
                 if self.path_type == "image":
                     caption = self.individual_process(self.path)
                     self.calculated_captions = dict(filename = self.path, caption = caption)
 
             if event == "open_search":
-                search_headings = [["Filename", "Description"]]
-                search_table = sg.Table([[","]], key="search_table", expand_x=True, expand_y=True, headings=search_headings)
+                search_headings = ["Filename", "Description"]
+                search_table = sg.Table([["", ""]], key="search_table", expand_x=True, expand_y=True, headings=search_headings)
                 search_layout = [
                     [search_table],
                     [sg.Text("Search term:"), sg.InputText("", key="search_term"), sg.Button("Search file")]
@@ -213,14 +209,13 @@ class GUI:
                         search_term = values2["search_term"]
                         for key, value in self.calculated_captions.items():
                             if value.__contains__(search_term):
+                                print("Key: " + key + ", Value: " + value)
                                 found_files.append([key, value])
 
                         search_table.update(found_files)
 
                     if event2 == sg.WIN_CLOSED:
                         break
-
-
 
 
             if event == sg.WIN_CLOSED:
